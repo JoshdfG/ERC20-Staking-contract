@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-interface IERC20 {
-    function totalSupply() external view returns (uint);
+interface IToken {
+    function total() external view returns (uint);
 
-    function balanceOf(address account) external view returns (uint);
+    function balance(address acc) external view returns (uint);
 
     function transfer(address recipient, uint amount) external returns (bool);
 
@@ -26,79 +26,82 @@ interface IERC20 {
 }
 
 contract StakingRewards {
-    IERC20 public immutable stakingToken;
-    IERC20 public immutable rewardsToken;
+    IToken public immutable stakingToken;
+    IToken public immutable rewardsToken;
 
-    address public owner;
+    address public stakeOwner;
 
     uint256 public duration;
-    uint256 public finishAt;
-    uint256 public updatedAt;
+    uint256 public endAt;
+    uint256 public lastUpdateTime;
     uint256 public rewardRate;
     uint256 public rewardPerTokenStored;
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
-    uint256 public totalSupply;
-    mapping(address => uint256) public balanceOf;
+    uint256 public totalStaked;
+    mapping(address => uint256) public userStakeBalance;
 
     constructor(address _stakingToken, address _rewardToken) {
-        owner = msg.sender;
-        stakingToken = IERC20(_stakingToken);
-        rewardsToken = IERC20(_rewardToken);
+        stakeOwner = msg.sender;
+        stakingToken = IToken(_stakingToken);
+        rewardsToken = IToken(_rewardToken);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not authorized");
+    modifier onlyStakeOwner() {
+        require(msg.sender == stakeOwner, "Not authorized");
         _;
     }
 
-    modifier updateReward(address _account) {
+    modifier updateReward(address account) {
         rewardPerTokenStored = rewardPerToken();
-        updatedAt = lastTimeRewardApplicable();
+        lastUpdateTime = lastTimeRewardApplicable();
 
-        if (_account != address(0)) {
-            rewards[_account] = earned(_account);
-            userRewardPerTokenPaid[_account] = rewardPerTokenStored;
+        if (account != address(0)) {
+            rewards[account] = earned(account);
+            userRewardPerTokenPaid[account] = rewardPerTokenStored;
         }
 
         _;
     }
 
     function lastTimeRewardApplicable() public view returns (uint256) {
-        return _min(finishAt, block.timestamp);
+        return min(endAt, block.timestamp);
     }
 
     function rewardPerToken() public view returns (uint256) {
-        if (totalSupply == 0) {
+        if (totalStaked == 0) {
             return rewardPerTokenStored;
         }
 
         return
             rewardPerTokenStored +
-            (rewardRate * (lastTimeRewardApplicable() - updatedAt) * 1e18) /
-            totalSupply;
+            (rewardRate *
+                (lastTimeRewardApplicable() - lastUpdateTime) *
+                1e18) /
+            totalStaked;
     }
 
-    function stake(uint256 _amount) external updateReward(msg.sender) {
-        require(_amount > 0, "Amount = 0");
-        stakingToken.transferFrom(msg.sender, address(this), _amount);
-        balanceOf[msg.sender] += _amount;
-        totalSupply += _amount;
+    function stake(uint256 amount) external updateReward(msg.sender) {
+        require(amount > 0, "Amount = 0");
+        stakingToken.transferFrom(msg.sender, address(this), amount);
+        userStakeBalance[msg.sender] += amount;
+        totalStaked += amount;
     }
 
-    function withdraw(uint256 _amount) external updateReward(msg.sender) {
-        require(_amount > 0, "Amount = 0");
-        balanceOf[msg.sender] -= _amount;
-        totalSupply -= _amount;
-        stakingToken.transfer(msg.sender, _amount);
+    function withdraw(uint256 amount) external updateReward(msg.sender) {
+        require(amount > 0, "Amount = 0");
+        userStakeBalance[msg.sender] -= amount;
+        totalStaked -= amount;
+        stakingToken.transfer(msg.sender, amount);
     }
 
-    function earned(address _account) public view returns (uint256) {
+    function earned(address account) public view returns (uint256) {
         return
-            ((balanceOf[_account] *
-                (rewardPerToken() - userRewardPerTokenPaid[_account])) / 1e18) +
-            rewards[_account];
+            (userStakeBalance[account] *
+                (rewardPerToken() - userRewardPerTokenPaid[account])) /
+            1e18 +
+            rewards[account];
     }
 
     function getReward() external updateReward(msg.sender) {
@@ -109,33 +112,32 @@ contract StakingRewards {
         }
     }
 
-    function setRewardsDuration(uint256 _duration) external onlyOwner {
-        require(finishAt < block.timestamp, "Reward duration not finished");
+    function setRewardsDuration(uint256 _duration) external onlyStakeOwner {
+        require(endAt < block.timestamp, "Reward duration not finished");
         duration = _duration;
     }
 
     function notifyRewardAmount(
-        uint256 _amount
-    ) external onlyOwner updateReward(address(0)) {
-        if (block.timestamp >= finishAt) {
-            rewardRate = _amount / duration;
+        uint256 amount
+    ) external onlyStakeOwner updateReward(address(0)) {
+        if (block.timestamp >= endAt) {
+            rewardRate = amount / duration;
         } else {
-            uint256 remainingRewards = (finishAt - block.timestamp) *
-                rewardRate;
-            rewardRate = (_amount + remainingRewards) / duration;
+            uint256 remainingRewards = (endAt - block.timestamp) * rewardRate;
+            rewardRate = (amount + remainingRewards) / duration;
         }
 
         require(rewardRate > 0, "Reward rate = 0");
         require(
-            rewardRate * duration <= rewardsToken.balanceOf(address(this)),
+            rewardRate * duration <= rewardsToken.balance(address(this)),
             "Reward amount > balance"
         );
 
-        finishAt = block.timestamp + duration;
-        updatedAt = block.timestamp;
+        endAt = block.timestamp + duration;
+        lastUpdateTime = block.timestamp;
     }
 
-    function _min(uint256 x, uint256 y) private pure returns (uint256) {
+    function min(uint256 x, uint256 y) private pure returns (uint256) {
         return x <= y ? x : y;
     }
 }
