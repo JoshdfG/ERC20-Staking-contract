@@ -82,33 +82,33 @@ contract StakingRewards {
             totalStaked;
     }
 
-    function stake(uint256 amount) external updateReward(msg.sender) {
-        require(amount > 0, "Amount = 0");
-        stakingToken.transferFrom(msg.sender, address(this), amount);
-        userStakeBalance[msg.sender] += amount;
-        totalStaked += amount;
+    function stake(uint256 _amount) external updateReward(msg.sender) {
+        require(_amount > 0, "_amount = 0");
+        stakingToken.transferFrom(msg.sender, address(this), _amount);
+        userStakeBalance[msg.sender] += _amount;
+        totalStaked += _amount;
     }
 
-    function withdraw(uint256 amount) external updateReward(msg.sender) {
-        require(amount > 0, "Amount = 0");
-        userStakeBalance[msg.sender] -= amount;
-        totalStaked -= amount;
-        stakingToken.transfer(msg.sender, amount);
+    function withdraw(uint256 _amount) external updateReward(msg.sender) {
+        require(_amount > 0, "_amount = 0");
+        userStakeBalance[msg.sender] -= _amount;
+        totalStaked -= _amount;
+        stakingToken.transfer(msg.sender, _amount);
     }
 
-    function earned(address account) public view returns (uint256) {
+    function earned(address _address) public view returns (uint256) {
         return
-            (userStakeBalance[account] *
-                (rewardPerToken() - userRewardPerTokenPaid[account])) /
+            (userStakeBalance[_address] *
+                (rewardPerToken() - userRewardPerTokenPaid[_address])) /
             1e18 +
-            rewards[account];
+            rewards[_address];
     }
 
     function getReward() external updateReward(msg.sender) {
-        uint256 reward = rewards[msg.sender];
-        if (reward > 0) {
+        uint256 _reward = rewards[msg.sender];
+        if (_reward > 0) {
             rewards[msg.sender] = 0;
-            rewardsToken.transfer(msg.sender, reward);
+            rewardsToken.transfer(msg.sender, _reward);
         }
     }
 
@@ -118,13 +118,13 @@ contract StakingRewards {
     }
 
     function notifyRewardAmount(
-        uint256 amount
+        uint256 _amount
     ) external onlyStakeOwner updateReward(address(0)) {
         if (block.timestamp >= endAt) {
-            rewardRate = amount / duration;
+            rewardRate = _amount / duration;
         } else {
             uint256 remainingRewards = (endAt - block.timestamp) * rewardRate;
-            rewardRate = (amount + remainingRewards) / duration;
+            rewardRate = (_amount + remainingRewards) / duration;
         }
 
         require(rewardRate > 0, "Reward rate = 0");
@@ -137,7 +137,7 @@ contract StakingRewards {
         lastUpdateTime = block.timestamp;
     }
 
-    function min(uint256 x, uint256 y) private pure returns (uint256) {
-        return x <= y ? x : y;
+    function min(uint256 _x, uint256 _y) private pure returns (uint256) {
+        return _x <= _y ? _x : _y;
     }
 }
